@@ -1,78 +1,235 @@
+#!/usr/bin/env python
+# coding: utf-8
+
+# In[1]:
+
+
 import random
+import copy
+import time
 
 class TeekoPlayer:
     """ An object representation for an AI game player for the game Teeko.
     """
     board = [[' ' for j in range(5)] for i in range(5)]
     pieces = ['b', 'r']
+    # Bonus point for middle position
+    mid = [
+        [0,0,0,0,0],
+        [0,2,2,2,0],
+        [0,2,3,2,0],
+        [0,2,2,2,0],
+        [0,0,0,0,0]
+    ]
+    count = 0
 
     def __init__(self):
-        """ Initializes a TeekoPlayer object by randomly selecting red or black as its
-        piece color.
+        """ "AI always go first" - Hobbes
         """
-        self.my_piece = random.choice(self.pieces)
-        self.opp = self.pieces[0] if self.my_piece == self.pieces[1] else self.pieces[1]
-
+        self.my_piece = self.pieces[0]
+        self.opp = self.pieces[1]
+        
+    """
+    This function return a list of successor moves from the given state
+    @param state: the state to generate successor from
+    @param piece: the color of the current player piece
+    @return a list of move (same format as moves return by make_move() function)
+    """
+    def succ(self, state, piece):
+        drop = True
+        pos = []
+        # Count the number of the pieces of the player who are taking turn
+        for row in range(5):
+            for col in range(5):
+                if state[row][col] == piece:
+                    pos.append((row, col))
+        
+        # If the number of pieces is greater or equal to 4, it is not the drop phase
+        if len(pos) >= 4:
+            drop = False
+            
+        succ_list = []
+        
+        # Generate successor for drop phase if drop is True
+        if drop:
+            for row in range(5):
+                for col in range(5):
+                    if state[row][col] == ' ':
+                        succ_list.append([(row, col)])
+        
+        # Generate successor for continue playing phase
+        else:
+            for y, x in pos:
+                if y-1 >= 0:
+                    if state[y-1][x] == ' ':
+                        succ_list.append([(y-1, x), (y, x)])
+                    if x-1 >= 0 and state[y-1][x-1] == ' ':
+                        succ_list.append([(y-1, x-1), (y, x)])
+                    if x+1 < 5 and state[y-1][x+1] == ' ':
+                        succ_list.append([(y-1, x+1), (y, x)])
+                if y+1 < 5:
+                    if state[y+1][x] == ' ':
+                        succ_list.append([(y+1, x), (y, x)])
+                    if x-1 >= 0 and state[y+1][x-1] == ' ':
+                        succ_list.append([(y+1, x-1), (y, x)])
+                    if x+1 < 5 and state[y+1][x+1] == ' ':
+                        succ_list.append([(y+1, x+1), (y, x)])
+                if x-1 >= 0 and state[y][x-1] == ' ':
+                    succ_list.append([(y, x-1), (y, x)])
+                if x+1 < 5 and state[y][x+1] == ' ':
+                    succ_list.append([(y, x+1), (y, x)])
+                        
+        return succ_list
+    
+    """
+    This heuristic function weight the move by adding points for pieces of the
+    same color and deduct points for pieces of the different color in its adjacent
+    neighborhood
+    @param state: the state after the move is mad
+    @param move: the move (same format of moves return by make_move() function)
+    @param piece: the color of the current player piece
+    @return the heuristic value
+    """
+    def h(self, state, move, piece):
+        # Coordinate of the recent move
+        y = move[0][0]
+        x = move[0][1]
+        point = 0
+        
+        # Add the point for the position
+        point = self.mid[y][x]
+        
+        # Count the number of pieces around, add point for same color, deduct for different
+        if y-1 >= 0:
+            if state[y-1][x] == piece:
+                point += 2
+            elif state[y-1][x] != ' ':
+                point -= 1
+            if x-1 >= 0:
+                if state[y-1][x-1] == piece:
+                    point += 2
+                elif state[y-1][x-1] != ' ':
+                    point -= 1
+            if x+1 < 5:
+                if state[y-1][x+1] == piece:
+                    point += 2
+                elif state[y-1][x+1] != ' ':
+                    point -= 1
+        if y+1 < 5:
+            if state[y+1][x] == piece:
+                point += 2
+            elif state[y+1][x] != ' ':
+                point -= 1
+            if x-1 >= 0:
+                if state[y+1][x-1] == piece:
+                    point += 2
+                elif state[y+1][x-1] != ' ':
+                    point -= 1
+            if x+1 <5:
+                if state[y+1][x+1] == piece:
+                    point += 2
+                elif state[y+1][x+1] != ' ':
+                    point -= 1
+        if x-1 >= 0:
+            if state[y][x-1] == piece:
+                point += 2
+            elif state[y][x-1] != ' ':
+                point -= 1
+        if x+1 < 5:
+            if state[y][x+1] == piece:
+                point += 2
+            elif state[y][x+1] != ' ':
+                point -= 1
+            
+        # Return negative point for the opponent
+        # Divide the point by a large number to keep it between -1 and 1
+        if state[y][x] == self.opp:
+            return -point/20
+        return point/20
+    
+    """
+    This is the max_val function which make decision for the max player using
+    alpha beta pruning
+    @param state: current state
+    @param s: recent move that results in the current state
+    @param a: aplha
+    @param b: beta
+    @param depth: the depth that the function will explore
+    """
+    def max_val(self, state, s, a, b, depth):
+        terminal = self.game_value(state)
+        if terminal != 0:
+            return terminal
+        if depth == 0:
+            return self.h(state, s, state[s[0][0]][s[0][1]])
+        a = -20
+        for move in self.succ(state, self.my_piece):
+            succ_ = copy.deepcopy(state)
+            if len(move) > 1:
+                succ_[move[1][0]][move[1][1]] = ' '
+            succ_[move[0][0]][move[0][1]] = self.my_piece
+            a = max(a, self.min_val(succ_, move, a, b, depth-1))
+            if a >= b:
+                return b
+        return a
+    
+    """
+    This is the min_val function which make decision for the max player using
+    alpha beta pruning
+    @param state: current state
+    @param s: recent move that results in the current state
+    @param a: aplha
+    @param b: beta
+    @param depth: the depth that the function will explore
+    """
+    def min_val(self, state, s, a, b, depth):
+        terminal = self.game_value(state)
+        if terminal != 0:
+            return terminal
+        if depth == 0:
+            return self.h(state, s, state[s[0][0]][s[0][1]])
+        b = 20
+        for move in self.succ(state, self.opp):
+            succ_ = copy.deepcopy(state)
+            if len(move) > 1:
+                succ_[move[1][0]][move[1][1]] = ' '
+            succ_[move[0][0]][move[0][1]] = self.opp
+            b = min(b, self.max_val(succ_, move, a, b, depth-1))
+            if a >= b:
+                return a
+        return b
+        
+    """
+    Return the next move for the AI
+    @param state: the state that the AI is going to make a move from
+    @return a list of tuple(s) with the first element is the tuple contains the
+    coordinate of the destination, if it is not the drop phase, there will be
+    another tuple (the second element) contains the coordinate of the starting
+    point
+    """
     def make_move(self, state):
-        """ Selects a (row, col) space for the next move. You may assume that whenever
-        this function is called, it is this player's turn to move.
-            
-        Args:
-            state (list of lists): should be the current state of the game as saved in
-                this TeekoPlayer object. Note that this is NOT assumed to be a copy of
-                the game state and should NOT be modified within this method (use
-                place_piece() instead). Any modifications (e.g. to generate successors)
-                should be done on a deep copy of the state.
-                
-                In the "drop phase", the state will contain less than 8 elements which
-                are not ' ' (a single space character).
-        
-        Return:
-            move (list): a list of move tuples such that its format is
-                    [(row, col), (source_row, source_col)]
-                where the (row, col) tuple is the location to place a piece and the
-                optional (source_row, source_col) tuple contains the location of the
-                piece the AI plans to relocate (for moves after the drop phase). In
-                the drop phase, this list should contain ONLY THE FIRST tuple.
-
-        Note that without drop phase behavior, the AI will just keep placing new markers
-            and will eventually take over the board. This is not a valid strategy and
-            will earn you no points.
-        """
-        
-        drop_phase = True   # TODO: detect drop phase
-        
-        if not drop_phase:
-            # TODO: choose a piece to move and remove it from the board
-            # (You may move this condition anywhere, just be sure to handle it)
-            #
-            # Until this part is implemented and the move list is updated
-            # accordingly, the AI will not follow the rules after the drop phase!
-            pass
-
-        # select an unoccupied space randomly
-        # TODO: implement a minimax algorithm to play better
+        if self.count == 0:
+            return [(2,2)]
+        depth = 5
+        if self.count <= 4:
+            depth = 3
         move = []
-        (row, col) = (random.randint(0,4), random.randint(0,4))
-        while not state[row][col] == ' ':
-            (row, col) = (random.randint(0,4), random.randint(0,4))
-            
+        best = -30
+        alpha = -30
+        beta = 30
+        for s in self.succ(state, self.my_piece):
+            succ_ = copy.deepcopy(state)
+            if len(s) > 1:
+                succ_[s[1][0]][s[1][1]] = ' '
+            succ_[s[0][0]][s[0][1]] = self.my_piece
+            alpha = self.min_val(succ_, s, alpha, beta, depth)
+            if best < alpha:
+                best = alpha
+                move = s
         # ensure the destination (row,col) tuple is at the beginning of the move list
-        move.insert(0, (row, col))
         return move
 
     def opponent_move(self, move):
-        """ Validates the opponent's next move against the internal board representation.
-        You don't need to touch this code.
-
-        Args:
-            move (list): a list of move tuples such that its format is
-                    [(row, col), (source_row, source_col)]
-                where the (row, col) tuple is the location to place a piece and the
-                optional (source_row, source_col) tuple contains the location of the
-                piece the AI plans to relocate (for moves after the drop phase). In
-                the drop phase, this list should contain ONLY THE FIRST tuple.
-        """
         # validate input
         if len(move) > 1:
             source_row = move[1][0]
@@ -85,23 +242,10 @@ class TeekoPlayer:
         self.place_piece(move, self.opp)
         
     def place_piece(self, move, piece):
-        """ Modifies the board representation using the specified move and piece
-        
-        Args:
-            move (list): a list of move tuples such that its format is
-                    [(row, col), (source_row, source_col)]
-                where the (row, col) tuple is the location to place a piece and the
-                optional (source_row, source_col) tuple contains the location of the
-                piece the AI plans to relocate (for moves after the drop phase). In
-                the drop phase, this list should contain ONLY THE FIRST tuple.
-                
-                This argument is assumed to have been validated before this method
-                is called.
-            piece (str): the piece ('b' or 'r') to place on the board
-        """
         if len(move) > 1:
             self.board[move[1][0]][move[1][1]] = ' '
         self.board[move[0][0]][move[0][1]] = piece
+        self.count += 1
         
     def print_board(self):
         """ Formatted printing for the board """
@@ -113,17 +257,6 @@ class TeekoPlayer:
         print("   A B C D E")
         
     def game_value(self, state):
-        """ Checks the current board status for a win condition
-        
-        Args:
-        state (list of lists): either the current state of the game as saved in
-            this TeekoPlayer object, or a generated successor state.
-
-        Returns:
-            int: 1 if this TeekoPlayer wins, -1 if the opponent wins, 0 if no winner
-
-        TODO: complete checks for diagonal and 2x2 box wins
-        """
         # check horizontal wins
         for row in state:
             for i in range(2):
@@ -137,13 +270,29 @@ class TeekoPlayer:
                     return 1 if state[i][col]==self.my_piece else -1
 
         # TODO: check \ diagonal wins
+        for row in range(2):
+            for col in range(2):
+                if state[row][col] != ' ' and state[row][col] == state[row+1][col+1] == state[row+2][col+2] == state[row+3][col+3]:
+                    return 1 if state[row][col]==self.my_piece else -1
         # TODO: check / diagonal wins
+        for row in [3, 4]:
+            for col in range(2):
+                if state[row][col] != ' ' and state[row][col] == state[row-1][col+1] == state[row-2][col+2] == state[row-3][col+3]:
+                    return 1 if state[row][col]==self.my_piece else -1
+                
         # TODO: check 2x2 box wins
+        for row in range(4):
+            for col in range(4):
+                if state[row][col] != ' ' and state[row][col]==state[row][col+1]==state[row+1][col]==state[row+1][col+1]:
+                    return 1 if state[row][col]==self.my_piece else -1
         
         return 0 # no winner yet
 
-############################################################################
-#
+
+# In[2]:
+
+
+# #
 # THE FOLLOWING CODE IS FOR SAMPLE GAMEPLAY ONLY
 #
 ############################################################################
@@ -217,3 +366,4 @@ if ai.game_value(ai.board) == 1:
     print("AI wins! Game over.")
 else:
     print("You win! Game over.")
+
