@@ -293,7 +293,7 @@ class TeekoPlayer:
 
 
 # #
-# THE FOLLOWING CODE IS FOR SAMPLE GAMEPLAY ONLY
+# THE FOLLOWING CODE IS FOR INTERACTIVE GAMEPLAY
 #
 ############################################################################
 
